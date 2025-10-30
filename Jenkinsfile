@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/tu-usuario/tu-repo-flask.git'
+                git branch: 'main', url: 'https://github.com/JesusAIM64/Terraform.git'
                 sh 'ls -la'
             }
         }
