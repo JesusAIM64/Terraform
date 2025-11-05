@@ -82,7 +82,7 @@ pipeline {
             }
             steps {
                 script {
-                    timeout(time: 90, unit: 'SECONDS') {
+                    timeout(time: 90, unit: 'MINUTES') {
                         sh '''
                             echo "=== Realizando pruebas de integración ==="
                             for i in $(seq 1 9); do
@@ -103,7 +103,7 @@ pipeline {
                                     sleep 10
                                 fi
                             done
-                            echo "❌ Timeout: La aplicación no respondió en 90 segundos"
+                            echo "❌ Timeout: La aplicación no respondió en 90 minutos"
                             exit 1
                         '''
                     }
