@@ -43,7 +43,6 @@ pipeline {
             steps {
                 sh '''
                     echo "=== Ejecutando tests con aplicación ==="
-                    # Iniciar solo el servicio web que ejecutará los tests
                     docker-compose -f docker-compose.test.yml up --abort-on-container-exit --exit-code-from test-web
                 '''
             }
@@ -52,7 +51,6 @@ pipeline {
                     sh '''
                         echo "=== Limpiando entorno de test ==="
                         docker-compose -f docker-compose.test.yml down
-                        # Guardar logs para diagnóstico
                         docker-compose -f docker-compose.test.yml logs --no-color > test_logs.txt 2>&1 || true
                         echo "=== Logs de test guardados ==="
                         cat test_logs.txt | tail -50
@@ -86,11 +84,9 @@ pipeline {
                         sh '''
                             echo "=== Realizando pruebas de integración ==="
                             for i in $(seq 1 9); do
-                                # CAMBIO: Usar /health que sabemos que existe
                                 if curl -s -f http://localhost:5000/health > /dev/null; then
                                     echo "✅ Aplicación Flask respondiendo"
                                     
-                                    # CAMBIO: Verificar contenido del health check
                                     if curl -s http://localhost:5000/health | grep -q "healthy"; then
                                         echo "✅ Health check exitoso"
                                         echo "🎉 Todas las pruebas pasaron correctamente"
@@ -117,7 +113,6 @@ pipeline {
         always {
             sh '''
                 echo "=== Capturando logs antes de limpiar ==="
-                # CAMBIO: Referenciar correctamente el servicio web
                 docker-compose logs --tail=30 web 2>/dev/null || echo "No hay logs del servicio web"
                 docker-compose -f docker-compose.test.yml logs --tail=20 test-mysql 2>/dev/null || echo "No hay logs de test-mysql"
             '''
@@ -136,7 +131,6 @@ pipeline {
             echo "❌ Pipeline FALLÓ - Revisar logs de test"
             sh '''
                 echo "=== Últimos logs disponibles ==="
-                # CAMBIO: Referenciar correctamente el servicio web
                 docker-compose logs --tail=50 web 2>/dev/null || echo "No se pudieron obtener logs del servicio web"
             '''
         }
