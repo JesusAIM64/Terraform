@@ -86,11 +86,11 @@ pipeline {
                         sh '''
                             echo "=== Realizando pruebas de integración ==="
                             for i in $(seq 1 9); do
-                                if curl -s -f http://192.168.23.131:5000/login > /dev/null; then
+                                if curl -s -f http://localhost:5000/login > /dev/null; then
                                     echo "✅ Aplicación Flask respondiendo"
                                     
                                     # Probar que la base de datos funciona haciendo una consulta simple
-                                    if curl -s http://192.168.23.131:5000/register | grep -q "Register"; then
+                                    if curl -s http://localhost:5000/register | grep -q "Register"; then
                                         echo "✅ Formulario de registro accesible"
                                         echo "🎉 Todas las pruebas pasaron correctamente"
                                         exit 0
