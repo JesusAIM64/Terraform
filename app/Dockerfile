@@ -33,9 +33,9 @@ RUN pip install pytest pylint
 COPY --chown=appuser:appuser . .
 
 # Dar permisos de ejecución y crear directorio de cache con permisos
-RUN chmod +x entrypoint.sh wait_for_db.py && \
-    mkdir -p /app/.pytest_cache && \
-    chown -R appuser:appuser /app/.pytest_cache
+RUN mkdir -p /app/.pytest_cache && \
+    chown -R appuser:appuser /app/.pytest_cache && \
+    chmod -R 755 /app/.pytest_cache
 
 USER appuser
 
