@@ -27,7 +27,7 @@ services:
       timeout: 10s
       retries: 5
 
-  web:
+  flask-app:
     build: ./app
     container_name: flask-app
     environment:
