@@ -96,11 +96,11 @@ pipeline {
                                         exit 0
                                     else
                                         echo "⏳ Esperando que todos los servicios estén listos..."
-                                        sleep 10
+                                        sleep 45
                                     fi
                                 else
                                     echo "⏳ Esperando que la aplicación esté lista... (intento $i/9)"
-                                    sleep 10
+                                    sleep 45
                                 fi
                             done
                             echo "❌ Timeout: La aplicación no respondió en 90 minutos"
