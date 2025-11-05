@@ -81,29 +81,33 @@ pipeline {
                 expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
-                sh '''
-                    echo "=== Realizando pruebas de integración ==="
-                    timeout time: 90, unit: 'SECONDS', activity: true {
-                        while true; do
-                            if curl -s -f http://localhost:5000/login > /dev/null; then
-                                echo "✅ Aplicación Flask respondiendo"
-                                
-                                # Probar que la base de datos funciona haciendo una consulta simple
-                                if curl -s http://localhost:5000/register | grep -q "Register"; then
-                                    echo "✅ Formulario de registro accesible"
-                                    echo "🎉 Todas las pruebas pasaron correctamente"
-                                    break
+                script {
+                    timeout(time: 90, unit: 'SECONDS') {
+                        sh '''
+                            echo "=== Realizando pruebas de integración ==="
+                            for i in $(seq 1 9); do
+                                if curl -s -f http://localhost:5000/login > /dev/null; then
+                                    echo "✅ Aplicación Flask respondiendo"
+                                    
+                                    # Probar que la base de datos funciona haciendo una consulta simple
+                                    if curl -s http://localhost:5000/register | grep -q "Register"; then
+                                        echo "✅ Formulario de registro accesible"
+                                        echo "🎉 Todas las pruebas pasaron correctamente"
+                                        exit 0
+                                    else
+                                        echo "⏳ Esperando que todos los servicios estén listos..."
+                                        sleep 10
+                                    fi
                                 else
-                                    echo "⏳ Esperando que todos los servicios estén listos..."
+                                    echo "⏳ Esperando que la aplicación esté lista... (intento $i/9)"
                                     sleep 10
                                 fi
-                            else
-                                echo "⏳ Esperando que la aplicación esté lista..."
-                                sleep 10
-                            fi
-                        done
+                            done
+                            echo "❌ Timeout: La aplicación no respondió en 90 segundos"
+                            exit 1
+                        '''
                     }
-                '''
+                }
             }
         }
     }
@@ -111,9 +115,14 @@ pipeline {
     post {
         always {
             sh '''
+                echo "=== Capturando logs antes de limpiar ==="
+                docker-compose logs --tail=30 flask-app 2>/dev/null || echo "No hay logs de flask-app"
+                docker-compose -f docker-compose.test.yml logs --tail=20 test-mysql 2>/dev/null || echo "No hay logs de test-mysql"
+            '''
+            sh '''
                 echo "=== Limpiando entorno de desarrollo ==="
                 docker-compose down || true
-                # Limpiar recursos Docker
+                docker-compose -f docker-compose.test.yml down || true
                 docker system prune -f || true
             '''
             cleanWs()
@@ -124,10 +133,8 @@ pipeline {
         failure {
             echo "❌ Pipeline FALLÓ - Revisar logs de test"
             sh '''
-                echo "=== Últimos logs de MySQL ==="
-                docker-compose -f docker-compose.test.yml logs test-mysql | tail -30 || true
-                echo "=== Últimos logs de Test Web ==="
-                docker-compose -f docker-compose.test.yml logs test-web | tail -30 || true
+                echo "=== Últimos logs disponibles ==="
+                docker-compose logs --tail=50 2>/dev/null || echo "No se pudieron obtener logs"
             '''
         }
     }
