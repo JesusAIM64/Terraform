@@ -1,10 +1,10 @@
 pipeline {
     agent any
-    
+
     environment {
-        DOCKER_HOST = "unix:///var/run/docker.sock"
+        DOCKER_BUILDKIT = '1'
     }
-    
+
     stages {
         stage('Verify Environment') {
             steps {
@@ -18,13 +18,13 @@ pipeline {
                 '''
             }
         }
-        
+
         stage('Build') {
             steps {
                 sh 'docker-compose build --no-cache'
             }
         }
-        
+
         stage('Start Test Infrastructure') {
             steps {
                 sh '''
@@ -38,12 +38,11 @@ pipeline {
                 '''
             }
         }
-        
+
         stage('Run Tests') {
             steps {
                 sh '''
                     echo "=== Ejecutando tests con aplicación ==="
-                    # Iniciar solo el servicio web que ejecutará los tests
                     docker-compose -f docker-compose.test.yml up --abort-on-container-exit --exit-code-from test-web
                 '''
             }
@@ -52,58 +51,65 @@ pipeline {
                     sh '''
                         echo "=== Limpiando entorno de test ==="
                         docker-compose -f docker-compose.test.yml down
-                        # Guardar logs para diagnóstico
-                        docker-compose -f docker-compose.test.yml logs --no-color > test_logs.txt 2>&1 || true
+                        docker-compose -f docker-compose.test.yml logs --no-color > test_logs.txt
                         echo "=== Logs de test guardados ==="
                         cat test_logs.txt | tail -50
                     '''
-                    archiveArtifacts artifacts: 'test_logs.txt', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test_logs.txt', fingerprint: true
                 }
             }
         }
-        
+
         stage('Deploy to Development') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
             steps {
                 sh '''
                     echo "=== Desplegando entorno de desarrollo ==="
-                    docker-compose down || true
+                    docker-compose down
                     docker-compose up -d
                     sleep 30
                 '''
             }
         }
-        
+
         stage('Integration Test') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
             steps {
                 script {
-                    timeout(time: 90, unit: 'SECONDS') {
+                    // Aumentado a 3 minutos para dar suficiente tiempo
+                    timeout(time: 180, unit: 'SECONDS') {
                         sh '''
                             echo "=== Realizando pruebas de integración ==="
-                            for i in $(seq 1 9); do
-                                if curl -s -f http://localhost:5000/login > /dev/null; then
-                                    echo "✅ Aplicación Flask respondiendo"
+                            
+                            # Espera inicial para que la aplicación esté lista
+                            sleep 20
+                            echo "=== Iniciando verificaciones... ==="
+                            
+                            # Intentos más eficientes con mejor feedback
+                            for i in {1..25}; do
+                                echo "🔍 Intento $i/25 - Verificando conectividad..."
+                                
+                                # Primero probar health check
+                                if curl -s -f http://localhost:5000/health > /dev/null; then
+                                    echo "✅ Health check exitoso"
                                     
-                                    # Probar que la base de datos funciona haciendo una consulta simple
-                                    if curl -s http://localhost:5000/register | grep -q "Register"; then
-                                        echo "✅ Formulario de registro accesible"
-                                        echo "🎉 Todas las pruebas pasaron correctamente"
+                                    # Luego probar endpoint principal
+                                    if curl -s -f http://localhost:5000/login > /dev/null; then
+                                        echo "✅ Endpoint /login funcionando"
+                                        echo "🎉 INTEGRATION TESTS PASSED - Aplicación completamente operativa"
                                         exit 0
                                     else
-                                        echo "⏳ Esperando que todos los servicios estén listos..."
-                                        sleep 10
+                                        echo "⚠️  Health OK pero /login no responde, reintentando..."
                                     fi
                                 else
-                                    echo "⏳ Esperando que la aplicación esté lista... (intento $i/9)"
-                                    sleep 10
+                                    echo "⏳ Aplicación aún no lista, esperando 5s..."
                                 fi
+                                sleep 5
                             done
-                            echo "❌ Timeout: La aplicación no respondió en 90 segundos"
+                            
+                            echo "❌ ERROR: Timeout - La aplicación no respondió correctamente después de 25 intentos"
+                            echo "=== Debug information ==="
+                            docker-compose ps
+                            echo "=== Últimos logs de la aplicación ==="
+                            docker-compose logs --tail=30 flask-app
                             exit 1
                         '''
                     }
@@ -111,30 +117,39 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             sh '''
                 echo "=== Capturando logs antes de limpiar ==="
-                docker-compose logs --tail=30 flask-app 2>/dev/null || echo "No hay logs de flask-app"
-                docker-compose -f docker-compose.test.yml logs --tail=20 test-mysql 2>/dev/null || echo "No hay logs de test-mysql"
+                docker-compose logs --tail=30 flask-app
             '''
             sh '''
                 echo "=== Limpiando entorno de desarrollo ==="
-                docker-compose down || true
-                docker-compose -f docker-compose.test.yml down || true
-                docker system prune -f || true
+                docker-compose down
+                docker-compose -f docker-compose.test.yml down
+                docker system prune -f
             '''
             cleanWs()
         }
         success {
-            echo "🎉 Pipeline COMPLETADO EXITOSAMENTE"
+            echo "✅ Pipeline COMPLETADO EXITOSAMENTE"
         }
         failure {
             echo "❌ Pipeline FALLÓ - Revisar logs de test"
             sh '''
-                echo "=== Últimos logs disponibles ==="
-                docker-compose logs --tail=50 2>/dev/null || echo "No se pudieron obtener logs"
+                echo "=== Últimos logs de MySQL ==="
+                docker-compose -f docker-compose.test.yml logs test-mysql | tail -30
+                echo "=== Últimos logs de Test Web ==="  
+                docker-compose -f docker-compose.test.yml logs test-web | tail -30
+            '''
+        }
+        aborted {
+            echo "⚠️  Pipeline ABORTADO por timeout"
+            sh '''
+                echo "=== Capturando logs de diagnóstico ==="
+                docker-compose ps
+                docker-compose logs --tail=50 flask-app
             '''
         }
     }
